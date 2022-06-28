@@ -1,0 +1,208 @@
+---
+title: "fyp"
+author: "Azifah Astrina"
+date: "5/31/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Packages
+library(tidyverse)    # verbs
+library(foreach)      # loops
+library(dplyr)
+library(haven)
+setwd("~/Documents/walls")
+```
+
+```{r}
+contig <- read_csv("contdir.csv") %>% 
+# 1 -> "directly contiguous land border"
+filter(conttype == 1) %>% 
+# get variables we want
+select(statelno, statelab, statehno, statehab, begin, end) %>% 
+# make sensible column names
+rename("ccode_A"    = statelno,
+       "stateabb_A" = statelab,
+       "ccode_B"    = statehno,
+       "stateabb_B" = statehab,
+       "startyear"  = begin,
+       "endyear"    = end) %>% 
+# get ccodes right
+mutate(across(.cols = starts_with("ccode"),
+              .fns  = str_pad, width = 3, side = "left", pad = "0")) %>%
+# get years right
+mutate(startyear = floor(startyear / 100),
+       endyear   = floor(endyear   / 100)) %>%
+# get temporal domain right
+      filter(endyear >= 1945) %>% 
+# turn < 1945 to 1945 and > 2014 to 2014 
+mutate(startyear = ifelse(startyear < 1945, 1945, startyear),
+       endyear   = ifelse(endyear > 2014, 2014, endyear))
+    
+# convert to dyad-years
+dyad_years <- 
+foreach (i = 1:nrow(contig), .combine = bind_rows) %do%
+{ 
+foo <- slice(contig, i)
+tibble(ccode_A    = foo$ccode_A,
+       stateabb_A = foo$stateabb_A,
+       ccode_B    = foo$ccode_B,
+       stateabb_B = foo$stateabb_B,
+       year       = seq(from = foo$startyear, to = foo$endyear))
+      }
+    
+# make dyad, dyadyear IDs
+dyad_years <- dyad_years %>% 
+      unite(dyad, ccode_A, ccode_B, sep = "_", remove = FALSE) %>% 
+      unite(dyad_year, ccode_A, ccode_B, year, sep = "_", remove = FALSE)
+```
+
+```{r}
+# Carter & Poast's dataset.
+CP <- read_dta("JCR Table 3 Data 1.dta")
+
+# Subset 1945-2014
+cp1 <- read_dta("JCR Table 3 Data 1.dta") %>% 
+select(ccode1, ccode2, year, barrier, ln_gdppc_ratio, terr_dispute_M) %>% 
+rename("ccode_A"     = ccode1,
+       "ccode_B"     = ccode2,
+       "year"        = year,
+       "walls"       = barrier,
+       "ln_gdp_rat"  = ln_gdppc_ratio, # ratio of income gdp
+       "terdis"      = terr_dispute_M) %>% # territorial dispute
+mutate(across(.cols = starts_with("ccode"),
+              .fns  = str_pad, width = 3, side = "left", pad = "0")) %>%
+      filter(year >= 1945) %>% 
+mutate(year = ifelse(year < 1945, 1945, year),
+       year   = ifelse(year > 2014, 2014, year))
+
+# convert to dyad-years
+dy1 <- 
+foreach (i = 1:nrow(cp1), .combine = bind_rows) %do%
+{ 
+foo <- slice(cp1, i)
+tibble(ccode_A    = foo$ccode_A,
+       ccode_B    = foo$ccode_B,
+       year       = foo$year,
+       walls      = foo$walls,
+       ln_gdp_rat = foo$ln_gdp_rat,
+       terdis     = foo$terdis)
+}
+
+# make dyad, dyadyear IDs
+dy1 <- dy1 %>% 
+      unite(dyad, ccode_A, ccode_B, sep = "_", remove = FALSE) %>% 
+      unite(dyad_year, ccode_A, ccode_B, year, sep = "_", remove = FALSE)
+ 
+# execute the merge
+borderwalls <- 
+      left_join(dyad_years, dy1, by = "dyad_year") %>% 
+      mutate(walls = ifelse(is.na(walls), 0, 1)) %>%
+      rename("dyad"      = dyad.x,
+             "ccode_A"   = ccode_A.x,
+             "ccode_B"   = ccode_B.x,
+             "year"      = year.x)
+
+# clean version
+borderwalls <- borderwalls[,c(-8, -9, -10, -11)]
+```
+
+```{r}
+# Religion dataset (Maoz & Henderson, 2013)
+
+reli <- read.csv("WRP_national.csv") %>%
+  rename("ccode"      = state,
+         "stateabb" = name) %>%
+  mutate(across(.cols = starts_with("ccode"),
+              .fns  = str_pad, width = 3, side = "left", pad = "0"))
+
+# convert to ccode-years
+## I bet this is what you mean with ugly, but Idk a simpler way
+cy <- 
+foreach (i = 1:nrow(reli), .combine = bind_rows) %do%
+{ 
+fig <- slice(reli, i)
+tibble(ccode     = fig$ccode,
+       year      = fig$year,
+       stateabb  = fig$stateabb,
+       chrstprot = fig$chrstprot,
+       chrstcat  = fig$chrstcat,
+       chrstorth = fig$chrstorth,
+       chrstang  = fig$chrstang,
+       chrstothr = fig$chrstothr,
+       chrstgen  = fig$chrstgen,
+       judorth   = fig$judorth,
+       jdcons    = fig$jdcons,
+       judref    = fig$judref,
+       judothr   = fig$judothr,
+       judgen    = fig$judgen,
+       islmsun   = fig$islmsun,
+       islmshi   = fig$islmshi,
+       islmibd   = fig$islmibd,
+       islmnat   = fig$islmnat,
+       islmalw   = fig$islmalw,
+       islmahm   = fig$islmahm,
+       islmothr  = fig$islmothr,
+       islmgen   = fig$islmgen,
+       budmah    = fig$budmah,
+       budthr    = fig$budthr,
+       budothr   = fig$budothr,
+       budgen    = fig$budgen,
+       zorogen   = fig$zorogen,
+       hindgen   = fig$hindgen,
+       sikhgen   = fig$sikhgen,
+       shntgen   = fig$shntgen,
+       bahgen    = fig$bahgen,
+       taogen    = fig$taogen,
+       jaingen   = fig$jaingen,
+       confgen   = fig$confgen,
+       syncgen   = fig$syncgen,
+       anmgen    = fig$anmgen,
+       nonrelig  = fig$nonrelig,
+       othrgen   = fig$othrgen)
+      }
+    
+# make ccode and year ID
+reli <- cy %>%
+  unite(ccode_year, ccode, year, sep = "_", remove = FALSE)
+
+# exclude column ccode and year
+reli <- reli[,c(-2,-3)]
+```
+
+```{r}
+# Language dataset 1995-2021 (UN Data: http://data.un.org/Data.aspx?d=POP&f=tableCode:27)
+
+lang <- read.csv("UNdata_language.csv") %>%
+  select(Country.or.Area, Year, Area, Sex, Language, Value) %>%
+  rename("state"     = Country.or.Area,
+       "year"      = Year,
+       "area"      = Area,
+       "sex"       = Sex,
+       "language"  = Language,
+       "value"     = Value) %>%
+  filter(year >= 1995) %>% # subset from the year 1995-2014
+  mutate(year = ifelse(year < 1995, 1995, year),
+       year   = ifelse(year > 2014, 2014, year))
+```
+
+```{r}
+# Ethnic dataset 1995-2021 (UN Data: http://data.un.org/Data.aspx?d=POP&f=tableCode:26)
+
+eth <- read.csv("UNdata_ethnic.csv") %>%
+  select(Country.or.Area, Year, Area, Sex, National.and.or.ethnic.group, Value) %>%
+  rename("state"     = Country.or.Area,
+       "year"      = Year,
+       "area"      = Area,
+       "sex"       = Sex,
+       "nat_eth"   = National.and.or.ethnic.group,
+       "value"     = Value) %>%
+  filter(year >= 1995) %>% # subset from the year 1995-2014
+  mutate(year = ifelse(year < 1995, 1995, year),
+       year   = ifelse(year > 2014, 2014, year))
+```
+
