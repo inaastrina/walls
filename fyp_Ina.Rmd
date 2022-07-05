@@ -15,10 +15,13 @@ library(tidyverse)    # verbs
 library(foreach)      # loops
 library(dplyr)
 library(haven)
+install.packages("countrycode")
+library(countrycode)
 setwd("~/Documents/walls")
 ```
 
 ```{r}
+# Directly contiguous border
 contig <- read_csv("contdir.csv") %>% 
 # 1 -> "directly contiguous land border"
 filter(conttype == 1) %>% 
@@ -63,6 +66,7 @@ dyad_years <- dyad_years %>%
 
 ```{r}
 # Carter & Poast's dataset.
+set.seed(12345)
 CP <- read_dta("JCR Table 3 Data 1.dta")
 
 # Subset 1945-2014
@@ -76,9 +80,7 @@ rename("ccode_A"     = ccode1,
        "terdis"      = terr_dispute_M) %>% # territorial dispute
 mutate(across(.cols = starts_with("ccode"),
               .fns  = str_pad, width = 3, side = "left", pad = "0")) %>%
-      filter(year >= 1945) %>% 
-mutate(year = ifelse(year < 1945, 1945, year),
-       year   = ifelse(year > 2014, 2014, year))
+      filter(year >= 1945, year <= 2014)
 
 # convert to dyad-years
 dy1 <- 
@@ -113,11 +115,11 @@ borderwalls <- borderwalls[,c(-8, -9, -10, -11)]
 
 ```{r}
 # Religion dataset (Maoz & Henderson, 2013)
-
+set.seed(12345)
 reli <- read.csv("WRP_national.csv") %>%
-  rename("ccode"      = state,
+  rename("ccode_A"  = state,
          "stateabb" = name) %>%
-  mutate(across(.cols = starts_with("ccode"),
+  mutate(across(.cols = starts_with("ccode_A"),
               .fns  = str_pad, width = 3, side = "left", pad = "0"))
 
 # convert to ccode-years
@@ -126,83 +128,128 @@ cy <-
 foreach (i = 1:nrow(reli), .combine = bind_rows) %do%
 { 
 fig <- slice(reli, i)
-tibble(ccode     = fig$ccode,
-       year      = fig$year,
-       stateabb  = fig$stateabb,
-       chrstprot = fig$chrstprot,
-       chrstcat  = fig$chrstcat,
-       chrstorth = fig$chrstorth,
-       chrstang  = fig$chrstang,
-       chrstothr = fig$chrstothr,
-       chrstgen  = fig$chrstgen,
-       judorth   = fig$judorth,
-       jdcons    = fig$jdcons,
-       judref    = fig$judref,
-       judothr   = fig$judothr,
-       judgen    = fig$judgen,
-       islmsun   = fig$islmsun,
-       islmshi   = fig$islmshi,
-       islmibd   = fig$islmibd,
-       islmnat   = fig$islmnat,
-       islmalw   = fig$islmalw,
-       islmahm   = fig$islmahm,
-       islmothr  = fig$islmothr,
-       islmgen   = fig$islmgen,
-       budmah    = fig$budmah,
-       budthr    = fig$budthr,
-       budothr   = fig$budothr,
-       budgen    = fig$budgen,
-       zorogen   = fig$zorogen,
-       hindgen   = fig$hindgen,
-       sikhgen   = fig$sikhgen,
-       shntgen   = fig$shntgen,
-       bahgen    = fig$bahgen,
-       taogen    = fig$taogen,
-       jaingen   = fig$jaingen,
-       confgen   = fig$confgen,
-       syncgen   = fig$syncgen,
-       anmgen    = fig$anmgen,
-       nonrelig  = fig$nonrelig,
-       othrgen   = fig$othrgen)
+tibble(ccode_A     = fig$ccode_A,
+       year        = fig$year,
+       stateabb    = fig$stateabb,
+       chrstprot   = fig$chrstprot,
+       chrstcat    = fig$chrstcat,
+       chrstorth   = fig$chrstorth,
+       chrstang    = fig$chrstang,
+       chrstothr   = fig$chrstothr,
+       chrstgen    = fig$chrstgen,
+       judorth     = fig$judorth,
+       jdcons      = fig$jdcons,
+       judref      = fig$judref,
+       judothr     = fig$judothr,
+       judgen      = fig$judgen,
+       islmsun     = fig$islmsun,
+       islmshi     = fig$islmshi,
+       islmibd     = fig$islmibd,
+       islmnat     = fig$islmnat,
+       islmalw     = fig$islmalw,
+       islmahm     = fig$islmahm,
+       islmothr    = fig$islmothr,
+       islmgen     = fig$islmgen,
+       budmah      = fig$budmah,
+       budthr      = fig$budthr,
+       budothr     = fig$budothr,
+       budgen      = fig$budgen,
+       zorogen     = fig$zorogen,
+       hindgen     = fig$hindgen,
+       sikhgen     = fig$sikhgen,
+       shntgen     = fig$shntgen,
+       bahgen      = fig$bahgen,
+       taogen      = fig$taogen,
+       jaingen     = fig$jaingen,
+       confgen     = fig$confgen,
+       syncgen     = fig$syncgen,
+       anmgen      = fig$anmgen,
+       nonrelig    = fig$nonrelig,
+       othrgen     = fig$othrgen)
       }
     
 # make ccode and year ID
 reli <- cy %>%
-  unite(ccode_year, ccode, year, sep = "_", remove = FALSE)
+  unite(ccode_year, ccode_A, year, sep = "_", remove = FALSE)
 
-# exclude column ccode and year
-reli <- reli[,c(-2,-3)]
+# 1st, 2nd, and 3rd major religion. How to get rid of the on majority religion variable?
+reli_mod <- reli[order(reli$chrstprot, reli$chrstcat, reli$chrstorth, reli$chrstang, reli$chrstothr, reli$chrstgen, reli$judorth, reli$jdcons, reli$judref, reli$judothr, reli$judgen, reli$islmsun, reli$islmshi, reli$islmibd, reli$islmnat, reli$islmalw, reli$islmahm, reli$islmothr, reli$islmgen, reli$budmah, reli$budthr, reli$budothr, reli$budgen, reli$zorogen, reli$hindgen, reli$sikhgen, reli$shntgen, reli$bahgen, reli$taogen, reli$jaingen, reli$confgen, reli$syncgen, reli$anmgen, reli$nonrelig, reli$othrgen, decreasing = TRUE), ] %>%
+  group_by(ccode_A) %>%
+  slice(1:3)
+
+# exclude year
+reli_mod <- reli_mod[,c(-1, -3)]
+
+# execute the merge
+bw <- 
+      left_join(borderwalls, reli_mod, by = "ccode_A") %>% 
+      mutate(walls = ifelse(is.na(walls), 0, 1))
 ```
 
 ```{r}
 # Language dataset 1995-2021 (UN Data: http://data.un.org/Data.aspx?d=POP&f=tableCode:27)
+set.seed(12345)
+lang <- read.csv("UNdata_language.csv")
 
-lang <- read.csv("UNdata_language.csv") %>%
-  select(Country.or.Area, Year, Area, Sex, Language, Value) %>%
-  rename("state"     = Country.or.Area,
-       "year"      = Year,
-       "area"      = Area,
-       "sex"       = Sex,
-       "language"  = Language,
-       "value"     = Value) %>%
-  filter(year >= 1995) %>% # subset from the year 1995-2014
-  mutate(year = ifelse(year < 1995, 1995, year),
-       year   = ifelse(year > 2014, 2014, year))
+lang_mod <- transform(lang, Year = as.numeric(as.character(Year))) %>% # turn the vector into numeric
+  select(Country.or.Area, Year, Area, Language, Value) %>%
+  rename("state"      = Country.or.Area,
+         "year"       = Year,
+         "area"       = Area,
+         "language"   = Language,
+         "value_lang" = Value) %>%
+  filter(year >= 1995, year <= 2014) %>% # subset from the year 1995-2014
+  group_by(state) %>%
+  mutate(abbreviation = countrycode(state, origin = 'country.name', destination = 'iso3c'))
+# changing the full country name into abbrevation.
+
+# rename abbrevation
+lang_mod <- rename(lang_mod, "stateabb_A" = abbreviation)
+
+# codes for making 1st, 2nd, and 3rd major languages
+lang_mod <- lang_mod[order(lang_mod$value_lang, decreasing = TRUE), ] %>%
+  group_by(stateabb_A) %>%
+  slice(1:3)
+
+# exclude country name and year
+lang_mod <- lang_mod[,c(-1, -2)]
+
+# execute the merge
+bw <- 
+      left_join(bw, lang_mod, by = "stateabb_A") %>% 
+      mutate(walls = ifelse(is.na(walls), 0, 1))
 ```
 
 ```{r}
 # Ethnic dataset 1995-2021 (UN Data: http://data.un.org/Data.aspx?d=POP&f=tableCode:26)
+set.seed(12345)
+eth <- read.csv("UNdata_ethnic.csv")
 
-eth <- read.csv("UNdata_ethnic.csv") %>%
-  select(Country.or.Area, Year, Area, Sex, National.and.or.ethnic.group, Value) %>%
+eth_mod <- transform(eth, Year = as.numeric(as.character(Year))) %>% # turn the vector into numeric
+  select(Country.or.Area, Year, Area, National.and.or.ethnic.group, Value) %>%
   rename("state"     = Country.or.Area,
-       "year"      = Year,
-       "area"      = Area,
-       "sex"       = Sex,
-       "nat_eth"   = National.and.or.ethnic.group,
-       "value"     = Value) %>%
-  filter(year >= 1995) %>% # subset from the year 1995-2014
-  mutate(year = ifelse(year < 1995, 1995, year),
-       year   = ifelse(year > 2014, 2014, year))
+         "year"      = Year,
+         "area"      = Area,
+         "nat_eth"   = National.and.or.ethnic.group,
+         "value_eth" = Value) %>%
+  filter(year >= 1995, year <= 2014) %>% # subset from the year 1995-2014
+  group_by(state) %>%
+  mutate(abbreviation = countrycode(state, origin = 'country.name', destination = 'iso3c')) # changing the full country name into abbrevation.
+
+# rename abbrevation
+eth_mod <- rename(eth_mod, "stateabb_A" = abbreviation)
+
+# codes for making 1st, 2nd, and 3rd major languages
+eth_mod <- eth_mod[order(eth_mod$value_eth, decreasing = TRUE), ] %>%
+  group_by(stateabb_A) %>%
+  slice(1:3)
+
+# # exclude country name, year, and area
+eth_mod <- eth_mod[,c(-1, -2, -3)]
+
+# execute the merge
+bw <- 
+      left_join(bw, eth_mod, by = "stateabb_A") %>% 
+      mutate(walls = ifelse(is.na(walls), 0, 1))
 ```
 
